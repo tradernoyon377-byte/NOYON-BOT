@@ -1,0 +1,132 @@
+
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width,initial-scale=1">
+<title>NOYON AI SIGNALS PRO</title>
+<script src="https://unpkg.com/lightweight-charts/dist/lightweight-charts.standalone.production.js"></script>
+<style>
+body{margin:0;background:#080d18;color:white;font-family:Arial}
+header{padding:18px;background:#111a2b;color:#e6b84c;font-size:22px;font-weight:bold}
+main{padding:15px}
+select,input,button{padding:12px;margin:5px 0;border-radius:7px;border:0}
+input,select{background:#202d42;color:white;width:95%}
+button{background:#d7a936;color:#111;font-weight:bold}
+#chart{height:340px;margin-top:15px}
+.panel{background:#152238;padding:15px;border-radius:10px;margin:12px 0}
+#signal{font-size:26px;font-weight:bold}
+</style>
+</head>
+<body>
+<header>👑 NOYON AI SIGNALS PRO</header>
+<main>
+<div class="panel">
+<label>API KEY</label>
+<input id="key" type="password" placeholder="Enter Twelve Data API Key">
+<label>FOREX MARKET</label>
+<select id="pair">
+<option>GBP/USD</option><option>EUR/USD</option>
+<option>USD/JPY</option><option>USD/CHF</option>
+<option>AUD/USD</option><option>USD/CAD</option>
+<option>NZD/USD</option><option>EUR/GBP</option>
+<option>EUR/JPY</option><option>GBP/JPY</option>
+<option>AUD/JPY</option><option>EUR/CHF</option>
+</select>
+<button onclick="loadData()">ANALYZE MARKET</button>
+</div>
+<div class="panel">
+<div>MARKET: <span id="market">GBP/USD</span></div>
+<div>DATA: <span id="status">Waiting</span></div>
+<div id="signal">WAIT</div>
+<div id="details">Waiting for market data...</div>
+</div>
+<div class="panel">
+<strong>LIVE FOREX CANDLE CHART • 1 MIN</strong>
+<div id="chart"></div>
+</div>
+<div class="panel">
+<strong>RSI: </strong><span id="rsi">--</span><br>
+<strong>EMA 9: </strong><span id="ema9">--</span><br>
+<strong>EMA 21: </strong><span id="ema21">--</span>
+</div>
+</main>
+<script>
+const chart=LightweightCharts.createChart(
+document.getElementById('chart'),{
+layout:{background:{color:'#152238'},
+textColor:'#ddd'},
+grid:{vertLines:{color:'#29364a'},
+horzLines:{color:'#29364a'}},
+rightPriceScale:{borderColor:'#445'},
+timeScale:{timeVisible:true,secondsVisible:false}
+});
+const candles=chart.addSeries(
+LightweightCharts.CandlestickSeries,{
+upColor:'#00d58a',downColor:'#ff455e',
+borderVisible:false,
+wickUpColor:'#00d58a',
+wickDownColor:'#ff455e'
+});
+function ema(a,n){
+let k=2/(n+1),v=a[0];
+return a.map((x,i)=>v=i===0?x:x*k+v*(1-k));
+}
+function rsi(a,n=14){
+let gains=0,losses=0;
+for(let i=1;i<=n;i++){
+let d=a[i]-a[i-1];
+if(d>0)gains+=d;else losses-=d;
+}
+let rs=gains/(losses||0.000001);
+return 100-100/(1+rs);
+}
+async function loadData(){
+const key=document.getElementById('key').value.trim();
+const pair=document.getElementById('pair').value;
+if(!key){alert('Enter your API Key');return;}
+document.getElementById('status').textContent='Loading...';
+try{
+const url='https://api.twelvedata.com/time_series?symbol='+
+encodeURIComponent(pair)+'&interval=1min&outputsize=100&apikey='+
+encodeURIComponent(key);
+const response=await fetch(url);
+const data=await response.json();
+if(!data.values)throw Error(data.message||'API error');
+const rows=data.values.slice().reverse();
+const close=rows.map(x=>Number(x.close));
+const e9=ema(close,9),e21=ema(close,21);
+candles.setData(rows.map(x=>({
+time:Math.floor(new Date(x.datetime.replace(' ','T')+'Z').getTime()/1000),
+open:+x.open,high:+x.high,low:+x.low,close:+x.close
+})));
+chart.timeScale().fitContent();
+const last=close.length-1;
+const rv=rsi(close.slice(-15));
+const a=e9[last],b=e21[last];
+let signal='WAIT',color='#ffcc44';
+if(a>b&&close[last]>a&&rv>50&&rv<70){
+signal='UP 🟢';color='#00e69a';
+}else if(a<b&&close[last]<a&&rv<50&&rv>30){
+signal='DOWN 🔴';color='#ff455e';
+}
+document.getElementById('signal').textContent=signal;
+document.getElementById('signal').style.color=color;
+document.getElementById('rsi').textContent=rv.toFixed(2);
+document.getElementById('ema9').textContent=a.toFixed(5);
+document.getElementById('ema21').textContent=b.toFixed(5);
+document.getElementById('market').textContent=pair;
+document.getElementById('status').textContent='Data received';
+document.getElementById('details').textContent=
+'Last close: '+close[last]+' | Signal based on EMA 9/21 + RSI';
+}catch(e){
+document.getElementById('status').textContent='Error';
+document.getElementById('details').textContent=e.message;
+}
+}
+window.addEventListener('resize',()=>{
+chart.applyOptions({width:document.getElementById('chart').clientWidth});
+});
+</script>
+</body>
+</html>
